@@ -545,13 +545,13 @@ const Command = React.forwardRef<HTMLDivElement, CommandProps>((props, forwarded
               prev(e)
               break
             }
-            case 'Home': {
+            case 'PageUp': {
               // First item
               e.preventDefault()
               updateSelectedToIndex(0)
               break
             }
-            case 'End': {
+            case 'PageDown': {
               // Last item
               e.preventDefault()
               last()
