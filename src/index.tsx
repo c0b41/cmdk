@@ -737,7 +737,6 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>((props, forwardedRe
   return (
     <input
       ref={forwardedRef}
-      {...etc}
       cmdk-input=""
       autoComplete="off"
       autoCorrect="off"
@@ -758,6 +757,7 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>((props, forwardedRe
 
         onValueChange?.(e.target.value)
       }}
+      {...etc}
     />
   )
 })
