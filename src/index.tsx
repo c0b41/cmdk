@@ -9,6 +9,7 @@ type LoadingProps = Children &
   DivProps & {
     /** Estimated progress of loading asynchronous options. */
     progress?: number
+    label?: string
   }
 type EmptyProps = Children & DivProps & {}
 type SeparatorProps = DivProps & {
@@ -24,7 +25,13 @@ type DialogProps = RadixDialog.DialogProps &
     /** Provide a custom element the Dialog should portal into. */
     container?: HTMLElement
   }
-type ListProps = Children & DivProps & {}
+type ListProps = Children &
+  DivProps & {
+    /**
+     * Accessible label for this List of suggestions. Not shown visibly.
+     */
+    label?: string
+  }
 type ItemProps = Children &
   Omit<DivProps, 'disabled' | 'onSelect' | 'value'> & {
     /** Whether this item is currently disabled. */
@@ -150,7 +157,7 @@ const Command = React.forwardRef<HTMLDivElement, CommandProps>((props, forwarded
     /** Value of the search query. */
     search: '',
     /** Currently selected item value. */
-    value: props.value ?? props.defaultValue?.toLowerCase() ?? '',
+    value: props.value ?? props.defaultValue ?? '',
     filtered: {
       /** The count of all visible items. */
       count: 0,
@@ -176,12 +183,15 @@ const Command = React.forwardRef<HTMLDivElement, CommandProps>((props, forwarded
   /** Controlled mode `value` handling. */
   useLayoutEffect(() => {
     if (value !== undefined) {
-      const v = value.trim().toLowerCase()
+      const v = value.trim()
       state.current.value = v
-      schedule(6, scrollSelectedIntoView)
       store.emit()
     }
   }, [value])
+
+  useLayoutEffect(() => {
+    schedule(6, scrollSelectedIntoView)
+  }, [])
 
   const store: Store = React.useMemo(() => {
     return {
@@ -202,15 +212,18 @@ const Command = React.forwardRef<HTMLDivElement, CommandProps>((props, forwarded
           sort()
           schedule(1, selectFirstItem)
         } else if (key === 'value') {
+          // opts is a boolean referring to whether it should NOT be scrolled into view
+          if (!opts) {
+            // Scroll the selected item into view
+            schedule(5, scrollSelectedIntoView)
+          }
+
           if (propsRef.current?.value !== undefined) {
             // If controlled, just call the callback instead of updating state internally
             const newValue = (value ?? '') as string
             propsRef.current.onValueChange?.(newValue)
             return
             // opts is a boolean referring to whether it should NOT be scrolled into view
-          } else if (!opts) {
-            // Scroll the selected item into view
-            schedule(5, scrollSelectedIntoView)
           }
         }
 
@@ -514,6 +527,7 @@ const Command = React.forwardRef<HTMLDivElement, CommandProps>((props, forwarded
   return (
     <div
       ref={mergeRefs([ref, forwardedRef])}
+      tabIndex={-1}
       {...etc}
       cmdk-root=""
       onKeyDown={(e) => {
@@ -604,8 +618,10 @@ const Item = React.forwardRef<HTMLDivElement, ItemProps>((props, forwardedRef) =
   const forceMount = propsRef.current?.forceMount ?? groupContext?.forceMount
 
   useLayoutEffect(() => {
-    return context.item(id, groupContext?.id)
-  }, [])
+    if (!forceMount) {
+      return context.item(id, groupContext?.id)
+    }
+  }, [forceMount])
 
   const value = useValue(id, ref, [props.value, props.children, ref])
 
@@ -642,10 +658,10 @@ const Item = React.forwardRef<HTMLDivElement, ItemProps>((props, forwardedRef) =
       id={id}
       cmdk-item=""
       role="option"
-      aria-disabled={disabled || undefined}
-      aria-selected={selected || undefined}
-      data-disabled={disabled || undefined}
-      data-selected={selected || undefined}
+      aria-disabled={Boolean(disabled)}
+      aria-selected={Boolean(selected)}
+      data-disabled={Boolean(disabled)}
+      data-selected={Boolean(selected)}
       onPointerMove={disabled ? undefined : select}
       onClick={disabled ? undefined : onSelect}
     >
@@ -724,7 +740,9 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>((props, forwardedRe
   const context = useCommand()
 
   const selectedItemId = React.useMemo(() => {
-    const item = context.commandRef.current?.querySelector(`${ITEM_SELECTOR}[${VALUE_ATTR}="${value}"]`)
+    const item = context.commandRef.current?.querySelector(
+      `${ITEM_SELECTOR}[${VALUE_ATTR}="${encodeURIComponent(value)}"]`,
+    )
     return item?.getAttribute('id')
   }, [value, context.commandRef])
 
@@ -767,7 +785,7 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>((props, forwardedRe
  * Use the `--cmdk-list-height` CSS variable to animate height based on the number of results.
  */
 const List = React.forwardRef<HTMLDivElement, ListProps>((props, forwardedRef) => {
-  const { children, ...etc } = props
+  const { children, label = 'Suggestions', ...etc } = props
   const ref = React.useRef<HTMLDivElement>(null)
   const height = React.useRef<HTMLDivElement>(null)
   const context = useCommand()
@@ -797,7 +815,7 @@ const List = React.forwardRef<HTMLDivElement, ListProps>((props, forwardedRef) =
       {...etc}
       cmdk-list=""
       role="listbox"
-      aria-label="Suggestions"
+      aria-label={label}
       id={context.listId}
       aria-labelledby={context.inputId}
     >
@@ -829,14 +847,10 @@ const Dialog = React.forwardRef<HTMLDivElement, DialogProps>((props, forwardedRe
  * Automatically renders when there are no results for the search query.
  */
 const Empty = React.forwardRef<HTMLDivElement, EmptyProps>((props, forwardedRef) => {
-  const isFirstRender = React.useRef(true)
   const render = useCmdk((state) => state.filtered.count === 0)
 
-  React.useEffect(() => {
-    isFirstRender.current = false
-  }, [])
+  if (!render) return null
 
-  if (isFirstRender.current || !render) return null
   return <div ref={forwardedRef} {...props} cmdk-empty="" role="presentation" />
 })
 
@@ -844,7 +858,7 @@ const Empty = React.forwardRef<HTMLDivElement, EmptyProps>((props, forwardedRef)
  * You should conditionally render this with `progress` while loading asynchronous items.
  */
 const Loading = React.forwardRef<HTMLDivElement, LoadingProps>((props, forwardedRef) => {
-  const { progress, children, ...etc } = props
+  const { progress, children, label = 'Loading...', ...etc } = props
 
   return (
     <div
@@ -855,7 +869,7 @@ const Loading = React.forwardRef<HTMLDivElement, LoadingProps>((props, forwarded
       aria-valuenow={progress}
       aria-valuemin={0}
       aria-valuemax={100}
-      aria-label="Loading..."
+      aria-label={label}
     >
       <div aria-hidden>{children}</div>
     </div>
@@ -968,12 +982,12 @@ function useValue(
     const value = (() => {
       for (const part of deps) {
         if (typeof part === 'string') {
-          return part.trim().toLowerCase()
+          return part.trim()
         }
 
         if (typeof part === 'object' && 'current' in part) {
           if (part.current) {
-            return part.current.textContent?.trim().toLowerCase()
+            return part.current.textContent?.trim()
           }
           return valueRef.current
         }
