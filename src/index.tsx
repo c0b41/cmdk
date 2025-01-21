@@ -838,12 +838,12 @@ const List = React.forwardRef<HTMLDivElement, ListProps>((props, forwardedRef) =
       const el = height.current
       const wrapper = ref.current
       let animationFrame
-      const observer = new ResizeObserver(() => {
+      const observer = new ResizeObserver(debounce(() => { // make this little slow for "Uncaught ResizeObserver loop completed with undelivered notifications."
         animationFrame = requestAnimationFrame(() => {
           const height = el.offsetHeight
           wrapper.style.setProperty(`--cmdk-list-height`, height.toFixed(1) + 'px')
         })
-      })
+      }), 250)
       observer.observe(el)
       return () => {
         cancelAnimationFrame(animationFrame)
@@ -1098,3 +1098,45 @@ const srOnlyStyles = {
   whiteSpace: 'nowrap',
   borderWidth: '0',
 } as const
+
+
+nterface DebounceConstructor {
+  (func: () => void, wait: number, immediate?: boolean): DebouncedFunction;
+}
+
+interface DebouncedFunction {
+  (...args: unknown[]): Promise<unknown>;
+  cancel(): void;
+  doImmediately(...args: unknown[]): Promise<unknown>;
+}
+
+const debounce: DebounceConstructor = (func: () => void, wait: number, immediate?: boolean) => {
+  let timeout: NodeJS.Timeout | null = null;
+  const debouncedFn: DebouncedFunction = (...args) => new Promise((resolve) => {
+    clearTimeout(timeout);
+    timeout = setTimeout(() => {
+      timeout = null;
+      if (!immediate) {
+        void Promise.resolve(func.apply(this, [...args])).then(resolve);
+      }
+    }, wait);
+    if (immediate && !timeout) {
+      void Promise.resolve(func.apply(this, [...args])).then(resolve);
+    }
+  });
+
+  debouncedFn.cancel = () => {
+    clearTimeout(timeout);
+    timeout = null;
+  };
+
+  debouncedFn.doImmediately = (...args) => new Promise((resolve) => {
+    clearTimeout(timeout);
+    timeout = setTimeout(() => {
+      timeout = null;
+      void Promise.resolve(func.apply(this, [...args])).then(resolve);
+    }, 0);
+  });
+
+  return debouncedFn;
+}
